@@ -1,83 +1,266 @@
 # Url-Shorten-Worker
-A URL Shortener created using Cloudflare Worker
 
-## ✨ New Features
+A lightweight URL shortener running on Cloudflare Workers + KV.
 
-🔒 **CAPTCHA Protection** - Integrated with [CAP Worker](https://captcha.gurl.eu.org) for bot prevention and abuse protection
-- Configurable CAPTCHA on link creation and access
-- Service degradation strategy for high availability
-- Enterprise-grade security with graceful fallback
+## Features
 
-📚 [CAPTCHA Documentation](docs/CAPTCHA.md) | [验证码文档](docs/CAPTCHA_zh-hans.md)
+- **Zero-server**: Runs entirely on Cloudflare's edge network, no backend needed
+- **ES Modules**: Modern Cloudflare Workers format (no legacy Service Worker API)
+- **Self-contained**: Homepage HTML is inline, no external dependencies
+- **Unique links**: Same long URL always maps to the same short URL (configurable)
+- **CAPTCHA protection**: Optional [CAP Worker](https://captcha.gurl.eu.org) integration for bot prevention
+- **Google Safe Browsing**: Optional URL safety check before redirect
+- **TTL support**: Configurable link expiration time
+- **Referrer hiding**: Optional anonymous redirect (no HTTP Referer header)
+- **CORS enabled**: API can be called from any frontend
 
-# API
+## Quick Start (Dashboard)
 
-[API Documentation (API文档)](docs/API.md)
+### Step 1: Create a KV Namespace
 
-# Getting Start
+1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. Go to **Workers & Pages** → **KV** in the left sidebar
+3. Click **Create a namespace**
+4. Name it `URL_LINKS` (or any name you like), click **Add**
 
-## Quick Setup
+![Create KV Namespace](docs/kv_create_namespace.png)
 
-### 1. 创建 Workers KV 命名空间 / Create KV Namespace
+### Step 2: Create a Worker
 
-Go to Workers KV and create a namespace.
+1. Go to **Workers & Pages** → **Overview**
+2. Click **Create** → **Create Worker**
+3. Give it a name (e.g., `url-shorten`), click **Deploy**
+4. After creation, click **Edit Code**
 
-![](docs/kv_create_namespace.png)
+### Step 3: Deploy the Code
 
-### 2. 绑定 KV Namespace / Bind KV Namespace
+1. Delete all the default code in the editor
+2. Copy the entire content of `index.js` from this repo and paste it in
+3. Click **Save and Deploy**
 
-Bind an instance of a KV Namespace to access its data in a Worker.
+### Step 4: Bind KV Namespace
 
-![](docs/worker_settings.jpg)
+1. Go to your Worker → **Settings** → **Bindings**
+2. Click **Add** → **KV Namespace**
+3. Set **Variable name** to `LINKS` (must be exactly `LINKS`)
+4. Select the namespace you created in Step 1
+5. Click **Save**
 
-### 3. 配置绑定 / Configure Binding
+![Bind KV](docs/worker_kv_binding.png)
 
-Where Variable name should set as `LINKS` and KV namespace is the namespace you just created in the first step.
+### Step 5: Test
 
-Variable name 填写 `LINKS`, KV namespace 选择你刚刚创建的命名空间
+Visit your Worker URL (e.g., `https://url-shorten.your-account.workers.dev`). You should see the URL shortener homepage.
 
-![](docs/worker_kv_binding.png)
+---
 
-### 4. 部署代码 / Deploy Code
+## Quick Start (Wrangler CLI)
 
-Copy the `index.js` code from this project to Cloudflare Worker.
+For developers who prefer command-line deployment:
 
-复制本项目中的 `index.js` 的代码到 Cloudflare Worker
+### Prerequisites
 
-### 5. 配置验证码 (可选) / Configure CAPTCHA (Optional)
+```bash
+# Install Wrangler
+npm install -g wrangler
 
-Edit the `captcha` configuration in `index.js`:
+# Login to Cloudflare
+wrangler login
+```
+
+### Deploy
+
+```bash
+# Clone the repo
+git clone https://github.com/maojoey/Url-Shorten-Worker.git
+cd Url-Shorten-Worker
+
+# Create KV namespace
+wrangler kv namespace create LINKS
+# Copy the output id and paste it into wrangler.toml
+
+# Edit wrangler.toml — replace YOUR_KV_NAMESPACE_ID_HERE with the actual id
+
+# Deploy
+wrangler deploy
+```
+
+---
+
+## Custom Domain Setup
+
+If your domain is managed by Cloudflare (e.g., `example.com`), you can use a subdomain like `s.example.com` for your short links.
+
+### Method A: Custom Domains (Recommended)
+
+This is the simplest method. Cloudflare handles DNS automatically.
+
+1. Go to your Worker → **Settings** → **Triggers**
+2. Under **Custom Domains**, click **Add Custom Domain**
+3. Enter your domain (e.g., `s.example.com`)
+4. Click **Add Custom Domain**
+5. Done! Cloudflare auto-creates the DNS record
+
+### Method B: Workers Routes + DNS
+
+Use this if you need more control.
+
+**Step 1 — Add DNS record:**
+
+| Type | Name | Content | Proxy |
+|------|------|---------|-------|
+| `AAAA` | `s` | `100::` | Proxied (orange cloud ON) |
+
+> The `100::` is a placeholder IP. Cloudflare intercepts the traffic before it reaches any origin, so the IP doesn't matter — but **Proxy must be ON** (orange cloud).
+
+**Step 2 — Add Worker Route:**
+
+1. Go to the domain's page → **Workers Routes**
+2. Click **Add Route**
+3. Route: `s.example.com/*`
+4. Worker: select your `url-shorten` worker
+5. Click **Save**
+
+### Using Root Domain
+
+To use `example.com` directly (instead of a subdomain):
+
+- Custom Domains: enter `example.com`
+- Workers Routes: use `example.com/*` as the route, with an `AAAA` record on `@`
+
+---
+
+## Configuration
+
+Edit the `config` object at the top of `index.js`:
 
 ```javascript
-captcha: {
-  enabled: true,              // Set to false to disable CAPTCHA
-  require_on_create: true,    // Require CAPTCHA when creating links
-  require_on_access: false,   // Require CAPTCHA when accessing links
-  fallback_on_error: true,    // Allow operations when CAPTCHA service is down
+const config = {
+  no_ref: "off",         // "on" = hide Referer header on redirect
+  theme: "default",      // homepage theme
+  cors: "on",            // allow cross-origin API calls
+  unique_link: true,     // same URL → same short link
+  custom_link: false,    // allow users to choose custom short codes
+  safe_browsing_api_key: "",  // Google Safe Browsing API key (optional)
+  expiration_ttl: 0,     // link expiration in seconds (0 = never)
+
+  captcha: {
+    enabled: false,              // set to true to enable CAPTCHA
+    api_endpoint: "https://captcha.gurl.eu.org/api",
+    require_on_create: true,     // require CAPTCHA for link creation
+    require_on_access: false,    // require CAPTCHA for link access
+    timeout: 5000,               // API timeout in ms
+    fallback_on_error: true,     // allow operations when CAPTCHA service is down
+    max_retries: 2,              // retry attempts
+  },
+};
+```
+
+### Common Configurations
+
+**Personal use (no CAPTCHA):**
+```javascript
+captcha: { enabled: false }
+expiration_ttl: 0  // links never expire
+```
+
+**Public service (with CAPTCHA + expiration):**
+```javascript
+captcha: { enabled: true, require_on_create: true, require_on_access: false }
+expiration_ttl: 86400  // 24 hours
+```
+
+**High security:**
+```javascript
+captcha: { enabled: true, require_on_create: true, require_on_access: true, fallback_on_error: false }
+safe_browsing_api_key: "your-google-api-key"
+```
+
+---
+
+## API
+
+### Create Short Link
+
+**POST** `https://your-worker-domain/`
+
+**Request:**
+```json
+{
+  "url": "https://example.com/very/long/url",
+  "captcha_token": "optional-if-captcha-enabled"
 }
 ```
 
-**Default behavior**: CAPTCHA is required for link creation, but not for access.
+**Success Response:**
+```json
+{
+  "status": 200,
+  "key": "/aBcDeF",
+  "short_url": "https://your-worker-domain/aBcDeF"
+}
+```
 
-**默认行为**：创建短链接需要验证码，访问短链接不需要验证码。
+**Error Response:**
+```json
+{
+  "status": 400,
+  "error": "Invalid URL format. Must start with http:// or https:// and be under 2048 characters."
+}
+```
 
-For detailed CAPTCHA configuration, see:
-- [English Documentation](docs/CAPTCHA.md)
-- [中文文档](docs/CAPTCHA_zh-hans.md)
+### cURL Example
 
-### 6. 保存并部署 / Save and Deploy
+```bash
+curl -X POST https://s.example.com/ \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/long/url"}'
+```
 
-Click Save and Deploy
+### Access Short Link
 
-# Demo
-https://lnks.eu.org/
+**GET** `https://your-worker-domain/{key}`
 
-Note: Because someone abuse this demo website, all the generated link will automatically expired after 24 hours. For long-term use, please deploy your own.
+Returns a `302` redirect to the original URL.
 
-注意：所有由Demo网站生成的链接24小时后会自动失效，如需长期使用请自行搭建。
+For full API documentation, see [docs/API.md](docs/API.md).
 
-# crazypeace 修改版
+---
 
-https://github.com/xyTom/Url-Shorten-Worker/tree/crazypeace
+## CAPTCHA
 
-支持功能：1、自定义短链 2、页面缓存设置过的短链 3、长链接文本框预搜索localStorage 4、增加删除某条短链的按钮 5、密码保护
+For detailed CAPTCHA setup and configuration, see:
+- [English](docs/CAPTCHA.md)
+- [中文](docs/CAPTCHA_zh-hans.md)
+
+---
+
+## Changelog
+
+### v2.1.0 (2026-04)
+- Migrated to ES Modules format (Cloudflare recommended)
+- Inline homepage HTML — removed external GitHub Pages dependency
+- Added `wrangler.toml` for CLI deployment
+- Improved URL validation (using `URL` constructor, length limit)
+- Cryptographically secure random key generation (`crypto.getRandomValues`)
+- Better error handling with structured JSON responses
+- Added security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`)
+- Full `short_url` returned in API response (not just the key)
+- Top-level error catch prevents Worker crashes
+
+### v2.0.0 (2025-11)
+- Added CAPTCHA integration with CAP Worker
+- Added configurable link expiration (TTL)
+
+### v1.x
+- Initial release with KV-based URL shortening
+
+---
+
+## Credits
+
+Forked from [xyTom/Url-Shorten-Worker](https://github.com/xyTom/Url-Shorten-Worker).
+
+## License
+
+[MIT](LICENSE)

@@ -1,0 +1,15 @@
+name = "url-shorten"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# KV Namespace binding — replace the id with your actual KV namespace ID
+# You can find it at: Cloudflare Dashboard → Workers & Pages → KV
+# Run: npx wrangler kv namespace create LINKS
+[[kv_namespaces]]
+binding = "LINKS"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
+
+# Optional: Custom domain (uncomment and edit)
+# [routes]
+# route = "s.yourdomain.com/*"
+# zone_name = "yourdomain.com"

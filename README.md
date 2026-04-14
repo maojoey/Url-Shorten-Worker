@@ -1,5 +1,7 @@
 # Url-Shorten-Worker
 
+[中文文档](README_zh-hans.md)
+
 A lightweight URL shortener running on Cloudflare Workers + KV.
 
 ## Features
